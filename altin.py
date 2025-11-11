@@ -5,28 +5,71 @@ import time
 import datetime as dt
 import numpy as np
 import pandas as pd
+from requests.adapters import HTTPAdapter, Retry
 
+# SSL uyarılarını kapat
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 API_URL = "https://finans.truncgil.com/v4/today.json"
 
-def log(msg):
-    print(f"[{dt.datetime.now()}] {msg}")
+# --- GLOBAL RETRY SESSION (5 tekrar, beklemeli) ---
+session = requests.Session()
+retries = Retry(
+    total=5,
+    connect=5,
+    read=5,
+    backoff_factor=2,           # 1s → 2s → 4s → 8s → 16s
+    status_forcelist=[500, 502, 503, 504, 522, 524],
+    allowed_methods=["GET"]
+)
+session.mount("http://", HTTPAdapter(max_retries=retries))
+session.mount("https://", HTTPAdapter(max_retries=retries))
 
+
+def log(text):
+    print(f"[{dt.datetime.now()}] {text}")
+
+
+# ✅ API'den fiyat çeken KUSURSUZ fonksiyon
 def fetch_price():
-    try:
-        r = requests.get(API_URL, timeout=10)
-        r.raise_for_status()
-        j = r.json()
-        return float(j["GUMUS"]["Selling"]), float(j["GRA"]["Selling"])
-    except:
-        # SSL fallback
-        r = requests.get(API_URL, timeout=10, verify=False)
-        j = r.json()
-        return float(j["GUMUS"]["Selling"]), float(j["GRA"]["Selling"])
+    for attempt in range(5):
+        try:
+            # 1) Normal HTTPS denemesi
+            r = session.get(API_URL, timeout=10)
+            r.raise_for_status()
+            j = r.json()
 
+            gumus = float(j["GUMUS"]["Selling"])     # Gram gümüş
+            altin = float(j["GRA"]["Selling"])       # Gram altın
+            return gumus, altin
+
+        except Exception as e:
+            log(f"[secure fetch] Hata ({attempt+1}/5): {e}")
+
+            # 2) SSL doğrulama kapalı fallback (GitHub Actions için şart)
+            try:
+                r = session.get(API_URL, timeout=10, verify=False)
+                j = r.json()
+
+                gumus = float(j["GUMUS"]["Selling"])
+                altin = float(j["GRA"]["Selling"])
+                return gumus, altin
+
+            except Exception as e2:
+                log(f"[insecure fetch] Hata ({attempt+1}/5): {e2}")
+
+    # 5 defa da başarısız olursa
+    return None, None
+
+
+
+# ✅ RSI + EMA20/EMA50 SAT SİNYALİ
 def calc_signal(price_list):
+    if len(price_list) < 60:
+        return False
+
     df = pd.DataFrame({"close": price_list})
+
     df["ema20"] = df["close"].ewm(span=20, adjust=False).mean()
     df["ema50"] = df["close"].ewm(span=50, adjust=False).mean()
 
@@ -38,42 +81,50 @@ def calc_signal(price_list):
     df["rsi"] = 100 - (100 / (1 + rs))
 
     df = df.dropna()
-    if len(df) < 5:
-        return False
 
-    ema20_p, ema20 = df["ema20"].iloc[-2], df["ema20"].iloc[-1]
-    ema50_p, ema50 = df["ema50"].iloc[-2], df["ema50"].iloc[-1]
-    rsi_p, rsi     = df["rsi"].iloc[-2], df["rsi"].iloc[-1]
+    # Son veriler
+    ema20_prev, ema20 = df["ema20"].iloc[-2], df["ema20"].iloc[-1]
+    ema50_prev, ema50 = df["ema50"].iloc[-2], df["ema50"].iloc[-1]
+    rsi_prev, rsi = df["rsi"].iloc[-2], df["rsi"].iloc[-1]
 
-    cond1 = ema20_p >= ema50_p and ema20 < ema50
-    cond2 = rsi_p >= 70 and rsi < 70
+    # SAT sinyali:
+    cond1 = ema20_prev >= ema50_prev and ema20 < ema50
+    cond2 = rsi_prev >= 70 and rsi < 70
 
     return cond1 or cond2
 
+
+
+# ✅ ANA PROGRAM (sonsuz döngü — GitHub Actions her çalıştığında 1 kez döner)
 def main():
-    gum_list = []
-    alt_list = []
+    gumus_list = []
+    altin_list = []
 
-    while True:
-        gum, alt = fetch_price()
-        gum_list.append(gum)
-        alt_list.append(alt)
+    # ❗ GitHub Actions sadece 1 defa çalıştırır, o yüzden tek ölçüm yapacağız
+    gumus, altin = fetch_price()
 
-        # keep last 200 samples
-        gum_list = gum_list[-200:]
-        alt_list = alt_list[-200:]
+    if gumus is None or altin is None:
+        log("⚠ API YANIT VERMEDİ — bir sonraki çalıştırmada tekrar denenecek")
+        return
 
-        log(f"Gram Gümüş: {gum} | Gram Altın: {alt}")
+    gumus_list.append(gumus)
+    altin_list.append(altin)
 
-        gum_sat = calc_signal(gum_list)
-        alt_sat = calc_signal(alt_list)
+    log(f"Gram Gümüş: {gumus}")
+    log(f"Gram Altın: {altin}")
 
-        if gum_sat:
-            log("🔔 SİNYAL → GÜMÜŞ SAT!")
-        if alt_sat:
-            log("🔔 SİNYAL → ALTIN SAT!")
+    gumus_sat = calc_signal(gumus_list)
+    altin_sat = calc_signal(altin_list)
 
-        time.sleep(10)
+    if gumus_sat:
+        log("🔔 GÜMÜŞ SAT SİNYALİ!")
+    if altin_sat:
+        log("🔔 ALTIN SAT SİNYALİ!")
+
+    if not gumus_sat and not altin_sat:
+        log("✅ Şu anda sat sinyali yok")
+
+
 
 if __name__ == "__main__":
     main()

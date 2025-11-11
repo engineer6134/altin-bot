@@ -2,9 +2,8 @@ name: Altin Gümüş Sinyal Botu
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # Her 5 dakikada çalışır
-  workflow_dispatch:         # Elle çalıştırma
-  push:                      # Kod güncellenince de çalışsın
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
 
 jobs:
   run-bot:

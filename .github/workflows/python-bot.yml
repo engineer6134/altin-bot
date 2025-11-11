@@ -1,6 +1,5 @@
 name: altin-bot
 
-# ✅ GITHUB_TOKEN yazma izni
 permissions:
   contents: write
 
@@ -16,6 +15,8 @@ jobs:
     steps:
     - name: Depoyu çek
       uses: actions/checkout@v3
+      with:
+        persist-credentials: true
 
     - name: Python kur
       uses: actions/setup-python@v4
@@ -32,12 +33,11 @@ jobs:
     - name: Logları kaydet ve push et
       run: |
         echo "Çalışma zamanı: $(date)" >> bot_log.txt
-        
+
         git config --global user.email "github-actions@github.com"
         git config --global user.name "github-actions[bot]"
 
         git add bot_log.txt
         git commit -m "Bot log güncellendi" || echo "Commit yok"
 
-        # ✅ GH_TOKEN ile push — PAT gerekmez
-        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main
+        git push origin HEAD:main

@@ -1,39 +1,43 @@
 name: altin-bot
 
+# ✅ GITHUB_TOKEN yazma izni
+permissions:
+  contents: write
+
 on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Depoyu çek
-        uses: actions/checkout@v3
+    - name: Depoyu çek
+      uses: actions/checkout@v3
 
-      - name: Python kur
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
+    - name: Python kur
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
 
-      - name: Gerekli paketler
-        run: |
-          pip install requests pandas numpy
+    - name: Gerekli paketler
+      run: |
+        pip install requests pandas numpy
 
-      - name: Botu çalıştır
-        run: |
-          python altin.py
+    - name: Botu çalıştır
+      run: python altin.py
 
-      - name: Logları kaydet ve push et
-        run: |
-          echo "Çalışma zamanı: $(date)" >> bot_log.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bot_log.txt
-          git commit -m "Bot log güncellendi" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:${{ github.ref }}
+    - name: Logları kaydet ve push et
+      run: |
+        echo "Çalışma zamanı: $(date)" >> bot_log.txt
+        
+        git config --global user.email "github-actions@github.com"
+        git config --global user.name "github-actions[bot]"
+
+        git add bot_log.txt
+        git commit -m "Bot log güncellendi" || echo "Commit yok"
+
+        # ✅ GH_TOKEN ile push — PAT gerekmez
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main

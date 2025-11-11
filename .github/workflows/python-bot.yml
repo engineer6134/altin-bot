@@ -1,8 +1,11 @@
 name: altin-bot
 
+permissions:
+  contents: write
+
 on:
   schedule:
-    - cron: "*/5 * * * *"   # 5 dakikada bir çalıştır
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -12,6 +15,9 @@ jobs:
     steps:
     - name: Depoyu çek
       uses: actions/checkout@v3
+      with:
+        persist-credentials: true
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Python kur
       uses: actions/setup-python@v4
@@ -29,12 +35,8 @@ jobs:
     - name: Logları kaydet ve push et
       run: |
         echo "Çalışma zamanı: $(date)" >> bot_log.txt
-
-        git config --global user.email "github-actions@github.com"
-        git config --global user.name "github-actions[bot]"
-
-        git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}
-
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
         git add bot_log.txt
-        git commit -m "Bot log güncellendi" || echo "Commit yok"
-        git push origin HEAD:${{ github.ref }}
+        git commit -m "Bot log updated" || echo "No changes"
+        git push
